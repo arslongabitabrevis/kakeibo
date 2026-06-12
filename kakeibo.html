@@ -67,7 +67,7 @@ input:focus{border-color:var(--acc)}
   <button class="nb"    id="nb-history"  onclick="goTab('history')" ><span class="nb-ic">🕐</span>履歴</button>
   <button class="nb"    id="nb-settings" onclick="goTab('settings')"><span class="nb-ic">⚙️</span>設定</button>
 </nav>
-<input type="file" id="fi-cam" accept="image/*" capture="environment" style="display:none" onchange="handleFile(this)">
+<input type="file" id="fi-cam" accept="image/*,android/allowCamera" capture="environment" style="display:none" onchange="handleFile(this)">
 <input type="file" id="fi-gal" accept="image/*" style="display:none" onchange="handleFile(this)">
 
 <script>
