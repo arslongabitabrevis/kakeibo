@@ -67,7 +67,6 @@ input:focus{border-color:var(--acc)}
   <button class="nb"    id="nb-history"  onclick="goTab('history')" ><span class="nb-ic">🕐</span>履歴</button>
   <button class="nb"    id="nb-settings" onclick="goTab('settings')"><span class="nb-ic">⚙️</span>設定</button>
 </nav>
-<input type="file" id="fi-cam" accept="image/*,android/allowCamera" capture="environment" style="display:none" onchange="handleFile(this)">
 <input type="file" id="fi-gal" accept="image/*" style="display:none" onchange="handleFile(this)">
 
 <script>
@@ -176,11 +175,13 @@ function gauge(pct) {
 
 // ── タブ切り替え ─────────────────────────────────────────────────────────────
 function goTab(t) {
+  if (S.tab === 'scan' && t !== 'scan') stopCamera();
   S.tab = t;
   document.querySelectorAll('.nb').forEach(function(b) { b.classList.remove('on'); });
   var el = document.getElementById('nb-' + t);
   if (el) el.classList.add('on');
   render();
+  if (t === 'scan' && S.scanSt === 'idle') setTimeout(startCamera, 100);
 }
 function goManual() {
   S.form = { amount:'', cat:'food', store:'', memo:'', pay:'cash' };
@@ -237,8 +238,12 @@ function renderScan() {
   }
   if (S.scanSt === 'idle') {
     return '<p class="note">コンビニ・タクシー・書店・飲食店など、あらゆる領収書に対応しています。</p>'
-      + '<button class="cam-btn" onclick="document.getElementById(\'fi-cam\').click()"><span style="font-size:44px;line-height:1">📷</span>カメラで直接撮影</button>'
-      + '<button onclick="document.getElementById(\'fi-gal\').click()" style="width:100%;margin-top:10px;padding:13px;border:1px solid var(--bdr);border-radius:12px;background:#f1f5f9;font-size:14px;font-family:inherit;cursor:pointer;color:var(--txt2)">🖼 フォトから選ぶ</button>';
+      + '<div id="cam-wrap" style="position:relative;width:100%;background:#000;border-radius:14px;overflow:hidden;margin-bottom:10px">'
+      + '<video id="cam-video" autoplay playsinline style="width:100%;display:block;max-height:340px;object-fit:cover"></video>'
+      + '<canvas id="cam-canvas" style="display:none"></canvas>'
+      + '<button onclick="shootCamera()" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.9);border:4px solid white;cursor:pointer;font-size:28px;box-shadow:0 2px 8px rgba(0,0,0,.4)">📷</button>'
+      + '</div>'
+      + '<button onclick="document.getElementById(\'fi-gal\').click()" style="width:100%;padding:13px;border:1px solid var(--bdr);border-radius:12px;background:#f1f5f9;font-size:14px;font-family:inherit;cursor:pointer;color:var(--txt2)">🖼 フォトから選ぶ（代替）</button>';
   }
   if (S.scanSt === 'loading') {
     return '<div class="loading-wrap"><div class="spinner"></div><p style="font-size:14px;color:#64748b">解析中...</p></div>';
@@ -475,10 +480,48 @@ function toggleKey() {
   if (btn) btn.textContent = inp.type === 'password' ? '👁' : '🙈';
 }
 
+// ── ブラウザ内カメラ ─────────────────────────────────────────────────────────
+var camStream = null;
+
+function startCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } })
+    .then(function(stream) {
+      camStream = stream;
+      var v = document.getElementById('cam-video');
+      if (v) { v.srcObject = stream; }
+    })
+    .catch(function(e) {
+      var w = document.getElementById('cam-wrap');
+      if (w) w.innerHTML = '<p style="color:#fff;padding:20px;font-size:13px">カメラを起動できませんでした。<br>「🖼 フォトから選ぶ」をご利用ください。</p>';
+    });
+}
+
+function stopCamera() {
+  if (camStream) { camStream.getTracks().forEach(function(t){ t.stop(); }); camStream = null; }
+}
+
+function shootCamera() {
+  var v = document.getElementById('cam-video');
+  var c = document.getElementById('cam-canvas');
+  if (!v || !c) return;
+  c.width  = v.videoWidth;
+  c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0);
+  stopCamera();
+  c.toBlob(function(blob) {
+    var reader = new FileReader();
+    reader.onload = function(ev) { processImage(ev.target.result.split(',')[1], 'image/jpeg'); };
+    reader.readAsDataURL(blob);
+  }, 'image/jpeg', 0.92);
+  S.scanSt = 'loading'; render();
+}
+
 // ── レシートスキャン ─────────────────────────────────────────────────────────
 function handleFile(inp) {
   var file = inp.files && inp.files[0];
   if (!file) return;
+  stopCamera();
   S.scanSt  = 'loading';
   S.tab     = 'scan';
   document.querySelectorAll('.nb').forEach(function(b) { b.classList.remove('on'); });
@@ -488,6 +531,10 @@ function handleFile(inp) {
   var reader = new FileReader();
   reader.onload = function(ev) {
     var b64 = ev.target.result.split(',')[1];
+    processImage(b64, file.type);
+}
+
+function processImage(b64, mimeType) {
     fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -502,7 +549,7 @@ function handleFile(inp) {
         messages: [{
           role: 'user',
           content: [
-            { type: 'image', source: { type: 'base64', media_type: file.type, data: b64 } },
+            { type: 'image', source: { type: 'base64', media_type: mimeType, data: b64 } },
             { type: 'text',  text:
                 'このレシート・領収書を読み取り、以下のJSON形式のみで返してください。コードブロック・説明文は不要です。\n'
               + '例: {"total": 221, "store": "ローソン", "category": "food"}\n'
