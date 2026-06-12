@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>家計簿</title>
+<style>
+:root{--bg:#f8fafc;--surf:#fff;--bdr:rgba(0,0,0,.1);--bdr2:rgba(0,0,0,.18);--txt:#1e293b;--txt2:#64748b;--txt3:#94a3b8;--acc:#0c447c}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Hiragino Sans','Noto Sans JP',sans-serif;background:var(--bg);color:var(--txt);min-height:100dvh}
+#app{padding-bottom:calc(70px + env(safe-area-inset-bottom,0px))}
+#nav{position:fixed;bottom:0;left:0;right:0;height:calc(62px + env(safe-area-inset-bottom,0px));background:var(--surf);border-top:1px solid var(--bdr);display:flex;align-items:stretch;padding-bottom:env(safe-area-inset-bottom,0px);z-index:100;box-shadow:0 -2px 12px rgba(0,0,0,.06)}
+.nb{flex:1;border:none;background:none;cursor:pointer;font-family:inherit;font-size:10px;color:var(--txt3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:6px 2px;transition:color .2s;position:relative}
+.nb.on{color:var(--acc)}
+.nb.on::after{content:'';position:absolute;top:0;left:20%;right:20%;height:2px;background:var(--acc);border-radius:0 0 3px 3px}
+.nb-ic{font-size:22px;line-height:1}
+.pg{padding:16px}
+.stack{display:flex;flex-direction:column;gap:12px}
+.row{display:flex;align-items:center;gap:8px}
+.hdr{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+.hdr h2{font-size:18px;font-weight:500}
+.card{background:var(--surf);border:1px solid var(--bdr);border-radius:14px;padding:16px 18px}
+.lbl{font-size:12px;font-weight:500;color:var(--txt2);display:block;margin-bottom:6px}
+input[type=text],input[type=number],input[type=password],input[type=date]{width:100%;padding:11px 13px;border:1px solid var(--bdr);border-radius:10px;font-size:16px;font-family:inherit;background:var(--surf);color:var(--txt);outline:none;-webkit-appearance:none;appearance:none}
+input:focus{border-color:var(--acc)}
+.btn{width:100%;padding:14px;border:none;border-radius:12px;cursor:pointer;font-size:15px;font-weight:500;font-family:inherit}
+.btn:active{opacity:.7}
+.btn-p{background:var(--txt);color:#fff}
+.btn-s{background:#f1f5f9;border:1px solid var(--bdr);color:var(--txt)}
+.btn-row{display:flex;gap:10px}
+.btn-row .btn-s{flex:1}
+.btn-row .btn-p{flex:2}
+.chips{display:flex;flex-wrap:wrap;margin:-3px}
+.chip{display:inline-block;padding:7px 13px;border-radius:20px;border:1px solid var(--bdr);cursor:pointer;font-size:12px;font-family:inherit;background:#f1f5f9;color:var(--txt2);margin:3px}
+.chip.on{color:#fff;border-color:transparent}
+.gauge-wrap{position:relative;max-width:230px;margin:0 auto}
+.gauge-lbl{position:absolute;bottom:8px;left:0;right:0;text-align:center}
+.pbar{height:5px;background:#f1f5f9;border-radius:99px;overflow:hidden;margin-top:8px}
+.pbar-in{height:100%;border-radius:99px;transition:width .4s ease}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.stats{display:flex;justify-content:space-around;margin-top:12px;padding-top:12px;border-top:1px solid var(--bdr)}
+.s-lbl{font-size:11px;color:var(--txt3);text-align:center}
+.s-val{font-size:15px;font-weight:500;text-align:center}
+.hlist{background:var(--surf);border:1px solid var(--bdr);border-radius:14px;overflow:hidden}
+.hrow{display:flex;align-items:center;padding:12px 14px;gap:10px}
+.hrow+.hrow{border-top:1px solid var(--bdr)}
+.key-wrap{position:relative}
+.key-wrap input{padding-right:46px}
+.eye-btn{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--txt3);font-size:18px;font-family:inherit}
+.cam-btn{width:100%;height:150px;background:#f8fafc;border:1.5px dashed var(--bdr2);border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer;color:var(--txt2);font-family:inherit;font-size:14px;font-weight:500}
+.note{font-size:13px;color:var(--txt2);line-height:1.7;margin-bottom:14px}
+.empty{text-align:center;padding:80px 16px 40px;color:var(--txt3)}
+.warn{background:#fef9c3;border:1px solid #fde047;border-radius:12px;padding:13px 15px;margin-bottom:14px;font-size:13px;color:#713f12;line-height:1.6}
+.err-box{background:#fee2e2;border:1px solid #fca5a5;border-radius:12px;padding:16px;margin-bottom:14px}
+.date-lbl{font-size:12px;font-weight:500;color:var(--txt3);margin-bottom:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{width:40px;height:40px;border:3px solid #e2e8f0;border-top-color:var(--txt);border-radius:50%;animation:spin .8s linear infinite}
+.loading-wrap{display:flex;flex-direction:column;align-items:center;gap:16px;padding:80px 0}
+</style>
+</head>
+<body>
+<div id="app"><div id="ct" class="pg"></div></div>
+<nav id="nav">
+  <button class="nb on" id="nb-home"     onclick="goTab('home')"    ><span class="nb-ic">🏠</span>ホーム</button>
+  <button class="nb"    id="nb-scan"     onclick="goTab('scan')"    ><span class="nb-ic">📷</span>スキャン</button>
+  <button class="nb"    id="nb-manual"   onclick="goManual()"       ><span class="nb-ic">✏️</span>手動入力</button>
+  <button class="nb"    id="nb-history"  onclick="goTab('history')" ><span class="nb-ic">🕐</span>履歴</button>
+  <button class="nb"    id="nb-settings" onclick="goTab('settings')"><span class="nb-ic">⚙️</span>設定</button>
+</nav>
+<input type="file" id="fi-cam" accept="image/*" capture="environment" style="display:none" onchange="handleFile(this)">
+<input type="file" id="fi-gal" accept="image/*" style="display:none" onchange="handleFile(this)">
+
+<script>
+// ── カテゴリ ─────────────────────────────────────────────────────────────────
+var CATS = [
+  { id:'food',       label:'食事・飲料',   clr:'#185FA5' },
+  { id:'transport',  label:'交通費',        clr:'#0F6E56' },
+  { id:'book',       label:'書籍・学習',   clr:'#854F0B' },
+  { id:'shopping',   label:'ショッピング', clr:'#534AB7' },
+  { id:'daily',      label:'日用品・薬',   clr:'#3B6D11' },
+  { id:'entertain',  label:'趣味・娯楽',   clr:'#993C1D' },
+  { id:'charge',     label:'チャージ等',   clr:'#5F5E5A' },
+  { id:'other',      label:'その他',       clr:'#888780' },
+];
+var CMAP = {};
+CATS.forEach(function(c) { CMAP[c.id] = c; });
+
+// ── 支払方法 ─────────────────────────────────────────────────────────────────
+var PAYS = [
+  { id:'cash',       label:'現金' },
+  { id:'credit',     label:'クレカ' },
+  { id:'dpay',       label:'d払い' },
+  { id:'suica',      label:'Suica' },
+  { id:'starbucks',  label:'スタバカード' },
+  { id:'gopay',      label:'GOPay等' },
+  { id:'other',      label:'その他' },
+];
+var PMAP = {};
+PAYS.forEach(function(p) { PMAP[p.id] = p; });
+
+// ── 当月キー ─────────────────────────────────────────────────────────────────
+var MONTH = (function() {
+  var d = new Date();
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+})();
+
+// ── アプリ状態 ───────────────────────────────────────────────────────────────
+var S = {
+  tab: 'home',
+  txs: [],
+  cfg: {
+    monthlyBudget: 50000,
+    catBudget: { food:15000, transport:8000, book:5000, shopping:10000, daily:5000, entertain:5000, charge:5000, other:2000 }
+  },
+  apikey: '',
+  scanSt: 'idle',
+  apiError: '',
+  form: { amount:'', cat:'food', store:'', memo:'', pay:'cash' },
+  editId: null
+};
+
+// ── ストレージ ───────────────────────────────────────────────────────────────
+function load() {
+  try { var v = localStorage.getItem('kk_tx_' + MONTH);  if (v) S.txs    = JSON.parse(v); } catch(e) {}
+  try { var v = localStorage.getItem('kk_cfg');           if (v) S.cfg    = JSON.parse(v); } catch(e) {}
+  try { var v = localStorage.getItem('kk_apikey');        if (v) S.apikey = v;             } catch(e) {}
+}
+function saveTx()  { try { localStorage.setItem('kk_tx_' + MONTH, JSON.stringify(S.txs)); } catch(e) {} }
+function saveCfg() { try { localStorage.setItem('kk_cfg',          JSON.stringify(S.cfg)); } catch(e) {} }
+function saveKey() { try { localStorage.setItem('kk_apikey',       S.apikey);              } catch(e) {} }
+
+// ── ユーティリティ ───────────────────────────────────────────────────────────
+function fy(n) { return '¥' + Math.round(n).toLocaleString('ja-JP'); }
+function dot(clr) { return '<span class="dot" style="background:' + clr + '"></span>'; }
+
+function pbar(spent, budget, clr) {
+  var p   = budget > 0 ? Math.min(spent / budget, 1) * 100 : 0;
+  var col = (budget > 0 && spent >= budget) ? '#a32d2d' : p > 75 ? '#ba7517' : clr;
+  return '<div class="pbar"><div class="pbar-in" style="width:' + p.toFixed(1) + '%;background:' + col + '"></div></div>';
+}
+
+function catChips(selId) {
+  return '<div class="chips">' + CATS.map(function(c) {
+    var on = c.id === selId;
+    return '<button class="chip' + (on ? ' on' : '') + '" style="' + (on ? 'background:' + c.clr + ';' : '') + '" onclick="selCat(\'' + c.id + '\')">' + c.label + '</button>';
+  }).join('') + '</div>';
+}
+function selCat(id) {
+  S.form.cat = id;
+  var w = document.getElementById('chips-cat');
+  if (w) w.innerHTML = catChips(id);
+}
+
+function payChips(selId) {
+  return '<div class="chips">' + PAYS.map(function(p) {
+    var on = p.id === selId;
+    return '<button class="chip' + (on ? ' on' : '') + '" style="' + (on ? 'background:#334155;' : '') + '" onclick="selPay(\'' + p.id + '\')">' + p.label + '</button>';
+  }).join('') + '</div>';
+}
+function selPay(id) {
+  S.form.pay = id;
+  var w = document.getElementById('chips-pay');
+  if (w) w.innerHTML = payChips(id);
+}
+
+// ── ゲージ ───────────────────────────────────────────────────────────────────
+var R = 82, CX = 100, CY = 100, CIRC = 2 * Math.PI * 82, HALF = CIRC / 2;
+function gauge(pct) {
+  var p   = Math.min(Math.max(pct, 0), 1);
+  var clr = pct >= 1 ? '#a32d2d' : pct >= 0.75 ? '#ba7517' : '#0c447c';
+  return '<svg viewBox="0 0 200 110" style="width:100%;display:block">'
+    + '<circle cx="' + CX + '" cy="' + CY + '" r="' + R + '" fill="none" stroke="#f1f5f9" stroke-width="13" stroke-dasharray="' + HALF + ' ' + CIRC + '" stroke-dashoffset="' + HALF + '" stroke-linecap="round"/>'
+    + '<circle cx="' + CX + '" cy="' + CY + '" r="' + R + '" fill="none" stroke="' + clr + '" stroke-width="13" stroke-dasharray="' + (HALF * p).toFixed(1) + ' ' + CIRC + '" stroke-dashoffset="' + HALF + '" stroke-linecap="round" style="transition:stroke-dasharray .5s ease"/>'
+    + '</svg>';
+}
+
+// ── タブ切り替え ─────────────────────────────────────────────────────────────
+function goTab(t) {
+  S.tab = t;
+  document.querySelectorAll('.nb').forEach(function(b) { b.classList.remove('on'); });
+  var el = document.getElementById('nb-' + t);
+  if (el) el.classList.add('on');
+  render();
+}
+function goManual() {
+  S.form = { amount:'', cat:'food', store:'', memo:'', pay:'cash' };
+  goTab('manual');
+}
+
+// ── ホーム ───────────────────────────────────────────────────────────────────
+function renderHome() {
+  var total = S.txs.reduce(function(s, t) { return s + t.amount; }, 0);
+  var bgt   = S.cfg.monthlyBudget || 1;
+  var pct   = total / bgt;
+  var rem   = Math.max(bgt - total, 0);
+  var now   = new Date();
+  var ml    = now.getFullYear() + '年' + (now.getMonth() + 1) + '月';
+  var stxt  = pct >= 1 ? '予算超過' : pct >= 0.75 ? '残りわずか' : '順調';
+  var sclr  = pct >= 1 ? '#a32d2d'  : pct >= 0.75 ? '#ba7517'   : '#0f6e56';
+  var cs    = {};
+  CATS.forEach(function(c) {
+    cs[c.id] = S.txs.filter(function(t) { return t.category === c.id; }).reduce(function(s, t) { return s + t.amount; }, 0);
+  });
+  var apiWarn = S.apikey ? '' : '<div class="warn">⚠ <strong>設定</strong>タブでAPIキーを登録するとスキャン機能が使えます。</div>';
+  var catRows = CATS.filter(function(c) {
+    return (cs[c.id] || 0) > 0 || ((S.cfg.catBudget || {})[c.id] || 0) > 0;
+  }).map(function(c) {
+    var sp = cs[c.id] || 0;
+    var cb = ((S.cfg.catBudget || {})[c.id]) || 0;
+    return '<div class="card" style="margin-top:8px">'
+      + '<div class="row">' + dot(c.clr)
+      + '<span style="flex:1;font-size:13px;color:#64748b">' + c.label + '</span>'
+      + '<span style="font-size:14px;font-weight:500">' + fy(sp) + '</span>'
+      + (cb > 0 ? '<span style="font-size:11px;color:#94a3b8;margin-left:2px">/ ' + fy(cb) + '</span>' : '')
+      + '</div>' + (cb > 0 && sp > 0 ? pbar(sp, cb, c.clr) : '') + '</div>';
+  }).join('');
+  return apiWarn
+    + '<div class="hdr"><h2>' + ml + '</h2><span style="font-size:12px;font-weight:500;color:' + sclr + '">' + stxt + '</span></div>'
+    + '<div class="card"><div class="gauge-wrap">' + gauge(pct)
+    + '<div class="gauge-lbl">'
+    + '<div style="font-size:28px;font-weight:700;letter-spacing:-1px">' + fy(total) + '</div>'
+    + '<div style="font-size:11px;color:#94a3b8;margin-top:2px">上限 ' + fy(S.cfg.monthlyBudget) + '</div>'
+    + '</div></div>'
+    + '<div class="stats">'
+    + '<div><div class="s-lbl">残り</div><div class="s-val" style="color:' + (pct >= 1 ? '#a32d2d' : 'inherit') + '">' + fy(rem) + '</div></div>'
+    + '<div><div class="s-lbl">使用率</div><div class="s-val">' + Math.round(pct * 100) + '%</div></div>'
+    + '<div><div class="s-lbl">件数</div><div class="s-val">' + S.txs.length + '件</div></div>'
+    + '</div></div>'
+    + (catRows || '<p style="text-align:center;color:#94a3b8;font-size:13px;padding:20px 0">まだ記録がありません</p>');
+}
+
+// ── スキャン ─────────────────────────────────────────────────────────────────
+function renderScan() {
+  if (!S.apikey) {
+    return '<p class="note">スキャン機能にはAPIキーが必要です。</p>'
+      + '<button class="btn btn-s" onclick="goTab(\'settings\')">⚙️ 設定を開く</button>';
+  }
+  if (S.scanSt === 'idle') {
+    return '<p class="note">コンビニ・タクシー・書店・飲食店など、あらゆる領収書に対応しています。</p>'
+      + '<button class="cam-btn" onclick="document.getElementById(\'fi-cam\').click()"><span style="font-size:44px;line-height:1">📷</span>カメラで直接撮影</button>'
+      + '<button onclick="document.getElementById(\'fi-gal\').click()" style="width:100%;margin-top:10px;padding:13px;border:1px solid var(--bdr);border-radius:12px;background:#f1f5f9;font-size:14px;font-family:inherit;cursor:pointer;color:var(--txt2)">🖼 フォトから選ぶ</button>';
+  }
+  if (S.scanSt === 'loading') {
+    return '<div class="loading-wrap"><div class="spinner"></div><p style="font-size:14px;color:#64748b">解析中...</p></div>';
+  }
+  if (S.scanSt === 'apierror') {
+    return '<div class="err-box">'
+      + '<strong style="color:#991b1b">❌ APIエラー</strong>'
+      + '<p style="font-size:13px;color:#7f1d1d;margin-top:6px;line-height:1.6;word-break:break-all">' + (S.apiError || '不明なエラー') + '</p>'
+      + '</div>'
+      + '<p class="note">考えられる原因：<br>・APIキーが無効<br>・Anthropicアカウントの残高不足<br>・通信エラー</p>'
+      + '<div class="btn-row"><button class="btn btn-s" onclick="S.scanSt=\'idle\';render()">戻る</button>'
+      + '<button class="btn btn-p" onclick="goTab(\'settings\')">設定を確認</button></div>';
+  }
+  if (S.scanSt === 'error') {
+    return '<div style="text-align:center;padding:50px 0 20px">'
+      + '<span style="font-size:48px">⚠️</span>'
+      + '<p class="note" style="margin-top:12px">読み取れませんでした。手動入力をご利用ください。</p>'
+      + '<div class="btn-row"><button class="btn btn-s" onclick="S.scanSt=\'idle\';render()">戻る</button>'
+      + '<button class="btn btn-p" onclick="goManual()">手動入力へ</button></div></div>';
+  }
+  if (S.scanSt === 'confirm') return renderForm('scan');
+  return '';
+}
+
+// ── 手動入力 ─────────────────────────────────────────────────────────────────
+function renderManual() {
+  return '<p class="note">Suicaチャージ・Amazon購入など、レシートのない支出はこちらから。</p>'
+    + renderForm('manual');
+}
+
+// ── 入力フォーム（スキャン確認・手動入力 共通） ───────────────────────────
+function renderForm(src) {
+  var cancelAct = src === 'scan' ? "S.scanSt='idle';render()" : "goManual()";
+  return '<div class="stack">'
+    + '<div><label class="lbl">金額（円）</label>'
+    + '<input type="number" inputmode="numeric" id="f-amt" value="' + (S.form.amount || '') + '" style="font-size:22px;font-weight:700" placeholder="0"></div>'
+    + '<div><label class="lbl">カテゴリ</label><div id="chips-cat">' + catChips(S.form.cat) + '</div></div>'
+    + '<div><label class="lbl">支払方法</label><div id="chips-pay">' + payChips(S.form.pay) + '</div></div>'
+    + '<div><label class="lbl">店名・内容</label>'
+    + '<input type="text" id="f-str" value="' + (S.form.store || '').replace(/"/g, '&quot;') + '" placeholder="例：タクシー、Amazon、SUICA"></div>'
+    + '<div><label class="lbl">メモ（任意）</label>'
+    + '<input type="text" id="f-memo" value="' + (S.form.memo || '').replace(/"/g, '&quot;') + '" placeholder="例：会議帰り、〇〇の本"></div>'
+    + '<div class="btn-row">'
+    + '<button class="btn btn-s" onclick="' + cancelAct + '">キャンセル</button>'
+    + '<button class="btn btn-p" onclick="addTx()">追加する</button>'
+    + '</div></div>';
+}
+
+// ── 履歴 ─────────────────────────────────────────────────────────────────────
+function renderHistory() {
+  if (!S.txs.length) {
+    return '<div class="empty"><span style="font-size:48px;display:block;margin-bottom:12px">🧾</span><p style="font-size:14px">記録がありません</p></div>';
+  }
+  var grp = {}, keys = [];
+  S.txs.forEach(function(tx) {
+    var d = new Date(tx.date).toLocaleDateString('ja-JP', { month:'long', day:'numeric', weekday:'short' });
+    if (!grp[d]) { grp[d] = []; keys.push(d); }
+    grp[d].push(tx);
+  });
+  return keys.map(function(d) {
+    return '<div style="margin-bottom:16px"><div class="date-lbl">' + d + '</div>'
+      + '<div class="hlist">' + grp[d].map(function(tx) {
+          var c  = CMAP[tx.category] || CMAP['other'];
+          var pl = tx.payLabel || '';
+          var sub = c.label + (pl ? '・' + pl : '') + (tx.memo ? '・' + tx.memo : '');
+          return '<div class="hrow">' + dot(c.clr)
+            + '<div style="flex:1;min-width:0">'
+            + '<div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (tx.store || '（記録）') + '</div>'
+            + '<div style="font-size:11px;color:#94a3b8">' + sub + '</div></div>'
+            + '<div style="font-size:14px;font-weight:500;margin-right:8px">' + fy(tx.amount) + '</div>'
+            + '<button onclick="editTx(' + tx.id + ')" style="background:none;border:none;cursor:pointer;color:#64748b;font-size:16px;padding:4px;margin-right:2px" aria-label="編集">✎</button>'
+            + '<button onclick="delTx(' + tx.id + ')" style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:18px;padding:4px" aria-label="削除">✕</button>'
+            + '</div>';
+        }).join('') + '</div></div>';
+  }).join('');
+}
+
+// ── 設定 ─────────────────────────────────────────────────────────────────────
+function renderSettings() {
+  var cb = S.cfg.catBudget || {};
+  var fields = CATS.map(function(c) {
+    return '<div class="row" style="margin-bottom:10px">' + dot(c.clr)
+      + '<span style="flex:1;font-size:13px;color:#64748b">' + c.label + '</span>'
+      + '<input type="number" inputmode="numeric" id="cb-' + c.id + '" value="' + (cb[c.id] || 0) + '" style="width:110px;text-align:right;font-weight:500"></div>';
+  }).join('');
+  return '<div class="stack">'
+    + '<div class="card"><label class="lbl">Anthropic APIキー</label>'
+    + '<div class="key-wrap">'
+    + '<input type="password" id="f-apikey" value="' + (S.apikey || '') + '" placeholder="sk-ant-...">'
+    + '<button class="eye-btn" onclick="toggleKey()" id="eye-btn">👁</button></div>'
+    + '<p style="font-size:11px;color:#94a3b8;margin-top:6px">このキーはこのデバイスのみに保存されます</p></div>'
+    + '<div class="card"><label class="lbl">月間上限額（円）</label>'
+    + '<input type="number" inputmode="numeric" id="cfg-mb" value="' + (S.cfg.monthlyBudget || 0) + '" style="font-size:22px;font-weight:700"></div>'
+    + '<div class="card"><div class="lbl" style="margin-bottom:12px">カテゴリ別上限額（円）</div>' + fields + '</div>'
+    + '<button class="btn btn-p" id="svbtn" onclick="doSave()">保存する</button>'
+    + '<div class="card" style="margin-top:20px">'
+    + '<div class="lbl" style="margin-bottom:8px">📤 データエクスポート</div>'
+    + '<p style="font-size:12px;color:#64748b;margin-bottom:8px;line-height:1.6">下のテキストをコピーして保管してください。別の環境へのデータ移行に使えます。</p>'
+    + '<button class="btn btn-s" onclick="doExport()" style="margin-bottom:8px">エクスポートする</button>'
+    + '<textarea id="export-area" style="width:100%;height:80px;font-size:11px;border:1px solid var(--bdr);border-radius:8px;padding:8px;font-family:monospace;resize:none;background:#f8fafc" placeholder="エクスポートボタンを押すとここにデータが表示されます" readonly></textarea>'
+    + '</div>'
+    + '<div class="card" style="margin-top:8px">'
+    + '<div class="lbl" style="margin-bottom:8px">📥 データインポート</div>'
+    + '<p style="font-size:12px;color:#64748b;margin-bottom:8px;line-height:1.6">エクスポートしたテキストを貼り付けて「インポートする」を押してください。<br><strong style="color:#a32d2d">現在のデータは上書きされます。</strong></p>'
+    + '<textarea id="import-area" style="width:100%;height:80px;font-size:11px;border:1px solid var(--bdr);border-radius:8px;padding:8px;font-family:monospace;resize:none" placeholder="エクスポートデータをここに貼り付け"></textarea>'
+    + '<button class="btn btn-s" onclick="doImport()" style="margin-top:8px">インポートする</button>'
+    + '</div></div>';
+}
+
+// ── メインレンダラ ───────────────────────────────────────────────────────────
+function render() {
+  var ct = document.getElementById('ct');
+  if (!ct) return;
+  try {
+    if      (S.tab === 'home')     ct.innerHTML = renderHome();
+    else if (S.tab === 'scan')     ct.innerHTML = renderScan();
+    else if (S.tab === 'manual')   ct.innerHTML = renderManual();
+    else if (S.tab === 'history')  ct.innerHTML = renderHistory();
+    else if (S.tab === 'settings') ct.innerHTML = renderSettings();
+  } catch(e) {
+    ct.innerHTML = '<div class="err-box"><strong style="color:#991b1b">表示エラー</strong>'
+      + '<p style="font-size:13px;color:#7f1d1d;margin-top:6px">' + e.message + '</p></div>';
+  }
+}
+
+// ── トランザクション追加 ─────────────────────────────────────────────────────
+function addTx() {
+  var amt   = parseInt((document.getElementById('f-amt')  || {}).value || '0');
+  var store = (document.getElementById('f-str')  || {}).value || '';
+  var memo  = (document.getElementById('f-memo') || {}).value || '';
+  if (!amt || amt <= 0) { alert('金額を入力してください'); return; }
+  var payObj = PMAP[S.form.pay] || PAYS[0];
+  S.txs.unshift({
+    id:       Date.now(),
+    date:     new Date().toISOString(),
+    amount:   amt,
+    category: S.form.cat,
+    store:    store,
+    memo:     memo,
+    pay:      S.form.pay,
+    payLabel: payObj.label
+  });
+  saveTx();
+  S.form   = { amount:'', cat:'food', store:'', memo:'', pay:'cash' };
+  S.scanSt = 'idle';
+  goTab('home');
+}
+
+// ── トランザクション削除 ─────────────────────────────────────────────────────
+function delTx(id) {
+  if (!confirm('この記録を削除しますか？')) return;
+  S.txs = S.txs.filter(function(t) { return t.id !== id; });
+  saveTx();
+  render();
+}
+
+// ── トランザクション編集 ─────────────────────────────────────────────────────
+function editTx(id) {
+  var tx = S.txs.find(function(t) { return t.id === id; });
+  if (!tx) return;
+  S.editId = id;
+  // dateEdit: YYYY-MM-DD形式に変換
+  var d = new Date(tx.date);
+  var ds = d.getFullYear() + '-' + ('0'+(d.getMonth()+1)).slice(-2) + '-' + ('0'+d.getDate()).slice(-2);
+  S.form = { amount: String(tx.amount), cat: tx.category, store: tx.store || '', memo: tx.memo || '', pay: tx.pay || 'cash', dateStr: ds };
+  goTab('history');
+  var ct = document.getElementById('ct');
+  if (ct) ct.innerHTML = renderEditForm();
+}
+
+function renderEditForm() {
+  return '<div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">'
+    + '<button onclick="S.editId=null;render()" style="background:none;border:none;cursor:pointer;font-size:22px;padding:4px">←</button>'
+    + '<h2 style="font-size:18px;font-weight:500">記録を編集</h2></div>'
+    + '<div class="stack">'
+    + '<div><label class="lbl">日付</label>'
+    + '<input type="date" id="f-date" value="' + (S.form.dateStr || '') + '" style="font-size:16px"></div>'
+    + '<div><label class="lbl">金額（円）</label>'
+    + '<input type="number" inputmode="numeric" id="f-amt" value="' + (S.form.amount || '') + '" style="font-size:22px;font-weight:700" placeholder="0"></div>'
+    + '<div><label class="lbl">カテゴリ</label><div id="chips-cat">' + catChips(S.form.cat) + '</div></div>'
+    + '<div><label class="lbl">支払方法</label><div id="chips-pay">' + payChips(S.form.pay) + '</div></div>'
+    + '<div><label class="lbl">店名・内容</label>'
+    + '<input type="text" id="f-str" value="' + (S.form.store || '').replace(/"/g,'&quot;') + '" placeholder="例：タクシー、Amazon"></div>'
+    + '<div><label class="lbl">メモ（任意）</label>'
+    + '<input type="text" id="f-memo" value="' + (S.form.memo || '').replace(/"/g,'&quot;') + '" placeholder="例：会議帰り"></div>'
+    + '<div class="btn-row">'
+    + '<button class="btn btn-s" onclick="S.editId=null;render()">キャンセル</button>'
+    + '<button class="btn btn-p" onclick="saveTxEdit()">保存する</button>'
+    + '</div></div>';
+}
+
+function saveTxEdit() {
+  var amt   = parseInt((document.getElementById('f-amt')  || {}).value || '0');
+  var store = (document.getElementById('f-str')  || {}).value || '';
+  var memo  = (document.getElementById('f-memo') || {}).value || '';
+  var ds    = (document.getElementById('f-date') || {}).value || '';
+  if (!amt || amt <= 0) { alert('金額を入力してください'); return; }
+  var payObj = PMAP[S.form.pay] || PAYS[0];
+  S.txs = S.txs.map(function(t) {
+    if (t.id !== S.editId) return t;
+    var newDate = ds ? new Date(ds).toISOString() : t.date;
+    return { id:t.id, date:newDate, amount:amt, category:S.form.cat, store:store, memo:memo, pay:S.form.pay, payLabel:payObj.label };
+  });
+  // 日付順に並べ直す
+  S.txs.sort(function(a,b){ return new Date(b.date) - new Date(a.date); });
+  saveTx();
+  S.editId = null;
+  S.form   = { amount:'', cat:'food', store:'', memo:'', pay:'cash' };
+  goTab('history');
+}
+
+// ── 設定保存 ─────────────────────────────────────────────────────────────────
+function doSave() {
+  var k = ((document.getElementById('f-apikey') || {}).value || '').trim();
+  S.apikey = k;
+  saveKey();
+  S.cfg.monthlyBudget = parseInt((document.getElementById('cfg-mb') || {}).value || '0') || 0;
+  S.cfg.catBudget = {};
+  CATS.forEach(function(c) {
+    var el = document.getElementById('cb-' + c.id);
+    S.cfg.catBudget[c.id] = parseInt((el && el.value) || '0') || 0;
+  });
+  saveCfg();
+  var b = document.getElementById('svbtn');
+  if (b) { b.textContent = '✓ 保存しました'; setTimeout(function() { if (b) b.textContent = '保存する'; }, 2000); }
+}
+
+// ── APIキー表示切替 ──────────────────────────────────────────────────────────
+function toggleKey() {
+  var inp = document.getElementById('f-apikey');
+  var btn = document.getElementById('eye-btn');
+  if (!inp) return;
+  inp.type       = inp.type === 'password' ? 'text'  : 'password';
+  if (btn) btn.textContent = inp.type === 'password' ? '👁' : '🙈';
+}
+
+// ── レシートスキャン ─────────────────────────────────────────────────────────
+function handleFile(inp) {
+  var file = inp.files && inp.files[0];
+  if (!file) return;
+  S.scanSt  = 'loading';
+  S.tab     = 'scan';
+  document.querySelectorAll('.nb').forEach(function(b) { b.classList.remove('on'); });
+  var el = document.getElementById('nb-scan');
+  if (el) el.classList.add('on');
+  render();
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    var b64 = ev.target.result.split(',')[1];
+    fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type':   'application/json',
+        'x-api-key':      S.apikey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model:      'claude-sonnet-4-6',
+        max_tokens: 300,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: file.type, data: b64 } },
+            { type: 'text',  text:
+                'このレシート・領収書を読み取り、以下のJSON形式のみで返してください。コードブロック・説明文は不要です。\n'
+              + '例: {"total": 221, "store": "ローソン", "category": "food"}\n'
+              + '- total: 税込合計金額を整数で（¥記号なし）。「合計」「お買上合計」「ご利用額」「お支払い額」などの行の金額\n'
+              + '- store: 店名\n'
+              + '- category: food/transport/book/shopping/daily/entertain/charge/other のいずれか\n'
+              + 'カテゴリ基準: food=飲食・食料品全般, transport=タクシー・電車・バス・駐車場, '
+              + 'book=書籍・教材・文具, shopping=衣類・家電・通販, '
+              + 'daily=日用品・医薬品, entertain=映画・ゲーム・趣味, '
+              + 'charge=ICカードチャージ・プリペイド, other=その他'
+            }
+          ]
+        }]
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.error || !d.content) {
+        S.apiError = d.error ? (d.error.type + ': ' + d.error.message) : JSON.stringify(d);
+        S.scanSt   = 'apierror';
+        render();
+        return;
+      }
+      var block = d.content.find(function(c) { return c.type === 'text'; });
+      var raw   = (block && block.text) || '{}';
+      var clean = raw.replace(/```json|```/g, '').trim();
+      var p;
+      try { p = JSON.parse(clean); } catch(e) { p = {}; }
+      var rawTotal = p.total;
+      var numTotal = 0;
+      if (typeof rawTotal === 'string') numTotal = parseInt(rawTotal.replace(/[¥￥,]/g, '')) || 0;
+      else numTotal = parseInt(rawTotal) || 0;
+      S.form   = { amount: numTotal > 0 ? String(numTotal) : '', cat: p.category || 'other', store: p.store || '', memo: '', pay: 'cash' };
+      S.scanSt = 'confirm';
+      render();
+    })
+    .catch(function(e) {
+      S.apiError = e ? e.message : '通信エラー';
+      S.scanSt   = 'apierror';
+      render();
+    });
+  };
+  reader.onerror = function() { S.apiError = 'ファイル読み込みエラー'; S.scanSt = 'apierror'; render(); };
+  reader.readAsDataURL(file);
+  inp.value = '';
+}
+
+// ── エクスポート・インポート ─────────────────────────────────────────────────
+function doExport() {
+  var data = {
+    version: 1,
+    month:   MONTH,
+    txs:     S.txs,
+    cfg:     S.cfg
+  };
+  var json = JSON.stringify(data, null, 2);
+  var el = document.getElementById('export-area');
+  if (el) { el.value = json; el.select(); }
+}
+
+function doImport() {
+  var el = document.getElementById('import-area');
+  if (!el || !el.value.trim()) { alert('データを貼り付けてください'); return; }
+  try {
+    var data = JSON.parse(el.value.trim());
+    if (!data.txs || !Array.isArray(data.txs)) throw new Error('形式が正しくありません');
+    S.txs = data.txs;
+    if (data.cfg) S.cfg = data.cfg;
+    saveTx();
+    saveCfg();
+    el.value = '';
+    alert('インポートしました（' + S.txs.length + '件）');
+    goTab('home');
+  } catch(e) {
+    alert('エラー：' + e.message);
+  }
+}
+
+// ── 起動 ─────────────────────────────────────────────────────────────────────
+load();
+render();
+</script>
+</body>
+</html>
